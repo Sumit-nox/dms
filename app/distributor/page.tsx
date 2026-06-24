@@ -9,6 +9,15 @@ export default function DistributorDashboard() {
   const [retailers, setRetailers] = useState<any[]>([]);
   const [orders, setOrders] = useState<any[]>([]);
 
+  const [billedOrders, setBilledOrders] =
+    useState<any[]>([]);
+
+  const [selectedOrder, setSelectedOrder] =
+    useState<number | null>(null);
+
+  const [orderItems, setOrderItems] =
+    useState<any[]>([]);
+
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
@@ -52,10 +61,20 @@ export default function DistributorDashboard() {
 
     console.log("ORDERS:", ordersData);
 
+    const { data: billedOrdersData } = await supabase
+      .from("orders")
+      .select(`
+    *,
+    retailers(name)
+  `)
+      .eq("status", "Billed")
+      .order("id", { ascending: false });
+
     setRoutes(routesData || []);
     setProducts(productsData || []);
     setRetailers(retailersData || []);
     setOrders(ordersData || []);
+    setBilledOrders(billedOrdersData || []);
   }
 
   async function addRetailer() {
@@ -108,6 +127,49 @@ export default function DistributorDashboard() {
     await loadData();
 
     alert("Retailer deleted successfully");
+  }
+
+  async function loadOrderDetails(orderId: number) {
+    const { data, error } = await supabase
+      .from("order_items")
+      .select(
+        `
+      *,
+      products(name)
+    `
+      )
+      .eq("order_id", orderId);
+
+    if (error) {
+      console.error(error);
+      alert(error.message);
+      return;
+    }
+
+    console.log("ORDER ITEMS:", data);
+
+    setOrderItems(data || []);
+    setSelectedOrder(orderId);
+  }
+
+  async function approveOrder(orderId: number) {
+    const { error } = await supabase
+      .from("orders")
+      .update({
+        status: "Billed",
+      })
+      .eq("id", orderId);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    alert("Order Approved");
+
+    await loadData();
+
+    setSelectedOrder(null);
   }
 
   return (
@@ -247,6 +309,42 @@ export default function DistributorDashboard() {
       </div>
 
       {/* Pending Orders */}
+
+    <div className="mt-12">
+  <h2 className="text-2xl font-bold mb-4">
+    Billed Orders
+  </h2>
+
+  {billedOrders.length === 0 ? (
+    <p>No billed orders.</p>
+  ) : (
+    billedOrders.map((order) => (
+      <div
+        key={order.id}
+        className="border p-4 rounded mb-3"
+      >
+        <div>
+          <strong>
+            Order #{order.id}
+          </strong>
+        </div>
+
+        <div>
+          Retailer: {order.retailers?.name}
+        </div>
+
+        <div>
+          Status: {order.status}
+        </div>
+
+        <div>
+          Date: {order.order_date}
+        </div>
+      </div>
+    ))
+  )}
+</div>
+
       <div>
         <h2 className="text-2xl font-bold mb-4">
           Pending Orders
@@ -278,6 +376,63 @@ export default function DistributorDashboard() {
               <div>
                 Date: {order.order_date}
               </div>
+
+              <div className="mt-4">
+                <button
+                  onClick={() => loadOrderDetails(order.id)}
+                  className="bg-blue-600 px-4 py-2 rounded"
+                >
+                  View Details
+                </button>
+
+                {selectedOrder === order.id && (
+                  <div className="mt-6 border-t pt-4">
+                    <h3 className="font-bold mb-3">
+                      Order Items
+                    </h3>
+
+                    {orderItems.map((item) => (
+                      <div
+                        key={item.id}
+                        className="border p-3 rounded mb-2"
+                      >
+                        <div>
+                          Product: {item.products?.name}
+                        </div>
+
+                        <div>
+                          Qty: {item.qty}
+                        </div>
+
+                        <div>
+                          Price: ₹{item.unit_price}
+                        </div>
+                      </div>
+                    ))}
+
+                    <div className="mt-4 font-bold">
+                      Total: ₹
+                      {orderItems.reduce(
+                        (sum, item) =>
+                          sum +
+                          item.qty *
+                          Number(item.unit_price),
+                        0
+                      )}
+                    </div>
+
+                    <button
+                      onClick={() => approveOrder(order.id)}
+                      className="mt-4 bg-green-600 px-4 py-2 rounded"
+                    >
+                      Approve Order
+                    </button>
+
+                  </div>
+                )}
+
+              </div>
+
             </div>
           ))
         )}
