@@ -7,6 +7,7 @@ export default function DistributorDashboard() {
   const [routes, setRoutes] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [retailers, setRetailers] = useState<any[]>([]);
+  const [orders, setOrders] = useState<any[]>([]);
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -38,9 +39,23 @@ export default function DistributorDashboard() {
       )
       .order("id");
 
+    const { data: ordersData } = await supabase
+      .from("orders")
+      .select(
+        `
+        *,
+        retailers(name)
+      `
+      )
+      .eq("status", "Pending")
+      .order("id", { ascending: false });
+
+    console.log("ORDERS:", ordersData);
+
     setRoutes(routesData || []);
     setProducts(productsData || []);
     setRetailers(retailersData || []);
+    setOrders(ordersData || []);
   }
 
   async function addRetailer() {
@@ -128,7 +143,9 @@ export default function DistributorDashboard() {
               key={product.id}
               className="border p-4 rounded mb-3"
             >
-              {product.name}
+              <div>{product.name}</div>
+              <div>₹{product.price}</div>
+              <div>Stock: {product.stock_qty}</div>
             </div>
           ))}
         </div>
@@ -191,7 +208,7 @@ export default function DistributorDashboard() {
       </div>
 
       {/* Retailers */}
-      <div>
+      <div className="mb-12">
         <h2 className="text-2xl font-bold mb-4">
           Retailers
         </h2>
@@ -224,6 +241,43 @@ export default function DistributorDashboard() {
               >
                 Delete
               </button>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* Pending Orders */}
+      <div>
+        <h2 className="text-2xl font-bold mb-4">
+          Pending Orders
+        </h2>
+
+        {orders.length === 0 ? (
+          <p>No pending orders.</p>
+        ) : (
+          orders.map((order) => (
+            <div
+              key={order.id}
+              className="border p-4 rounded mb-3"
+            >
+              <div>
+                <strong>
+                  Order #{order.id}
+                </strong>
+              </div>
+
+              <div>
+                Retailer:{" "}
+                {order.retailers?.name}
+              </div>
+
+              <div>
+                Status: {order.status}
+              </div>
+
+              <div>
+                Date: {order.order_date}
+              </div>
             </div>
           ))
         )}

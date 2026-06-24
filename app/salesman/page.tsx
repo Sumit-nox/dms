@@ -1,145 +1,238 @@
+
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 
 export default function SalesmanPage() {
-const [name, setName] = useState("");
-const [routes, setRoutes] = useState<any[]>([]);
-const [retailers, setRetailers] = useState<any[]>([]);
-const [products, setProducts] = useState<any[]>([]);
-const [loading, setLoading] = useState(true);
+  const [salesman, setSalesman] = useState<any>(null);
+  const [routes, setRoutes] = useState<any[]>([]);
+  const [retailers, setRetailers] = useState<any[]>([]);
+  const [products, setProducts] = useState<any[]>([]);
 
-useEffect(() => {
-loadDashboard();
-}, []);
+  const router = useRouter();
 
-async function loadDashboard() {
-const {
-data: { user },
-} = await supabase.auth.getUser();
+  useEffect(() => {
+    loadData();
+  }, []);
 
+  async function loadData() {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-console.log("USER:", user);
+    console.log("USER:", user);
 
-if (!user) {
-  setLoading(false);
-  return;
-}
+    if (!user) return;
 
-const { data: salesman, error: salesmanError } = await supabase
-  .from("salesmen")
-  .select("*")
-  .eq("profile_id", user.id)
-  .single();
+    // Find salesman record
+    const { data: salesmanData, error: salesmanError } = await supabase
+      .from("salesmen")
+      .select("*")
+      .eq("profile_id", user.id)
+      .single();
 
-console.log("SALESMAN:", salesman);
-console.log("SALESMAN ERROR:", salesmanError);
+    console.log("SALESMAN:", salesmanData);
+    console.log("SALESMAN ERROR:", salesmanError);
 
-if (!salesman) {
-  setLoading(false);
-  return;
-}
+    if (!salesmanData) return;
 
-setName(salesman.name);
+    setSalesman(salesmanData);
 
-const { data: routeLinks, error: routeLinksError } = await supabase
-  .from("salesman_routes")
-  .select("route_id")
-  .eq("salesman_id", salesman.id);
+    // Find route assignments
+    const { data: routeLinks, error: routeLinksError } = await supabase
+      .from("salesman_routes")
+      .select("*")
+      .eq("salesman_id", salesmanData.id);
 
-console.log("ROUTE LINKS:", routeLinks);
-console.log("ROUTE LINKS ERROR:", routeLinksError);
+    console.log("ROUTE LINKS:", routeLinks);
+    console.log("ROUTE LINKS ERROR:", routeLinksError);
 
-const routeIds = routeLinks?.map((r) => r.route_id) || [];
+    const routeIds =
+      routeLinks?.map((link: any) => link.route_id) || [];
 
-console.log("ROUTE IDS:", routeIds);
+    console.log("ROUTE IDS:", routeIds);
 
-if (routeIds.length > 0) {
-  const { data: routeData, error: routeError } = await supabase
-    .from("routes")
-    .select("*")
-    .in("id", routeIds);
+    // Get routes
+    if (routeIds.length > 0) {
+      const { data: routesData, error: routesError } = await supabase
+        .from("routes")
+        .select("*")
+        .in("id", routeIds);
 
-  console.log("ROUTES:", routeData);
-  console.log("ROUTES ERROR:", routeError);
+      console.log("ROUTES:", routesData);
+      console.log("ROUTES ERROR:", routesError);
 
-  setRoutes(routeData || []);
+      setRoutes(routesData || []);
 
-  const { data: retailerData, error: retailerError } = await supabase
-    .from("retailers")
-    .select("*")
-    .in("route_id", routeIds);
+      // Get retailers on these routes
+      const { data: retailersData, error: retailersError } =
+        await supabase
+          .from("retailers")
+          .select("*")
+          .in("route_id", routeIds);
 
-  console.log("RETAILERS:", retailerData);
-  console.log("RETAILERS ERROR:", retailerError);
+      console.log("RETAILERS:", retailersData);
+      console.log("RETAILERS ERROR:", retailersError);
 
-  setRetailers(retailerData || []);
-}
+      setRetailers(retailersData || []);
+    }
 
-const { data: productData, error: productError } = await supabase
-  .from("products")
-  .select("*");
+    // Get products
+    const { data: productsData, error: productsError } =
+      await supabase.from("products").select("*");
 
-console.log("PRODUCTS:", productData);
-console.log("PRODUCTS ERROR:", productError);
+    console.log("PRODUCTS:", productsData);
+    console.log("PRODUCTS ERROR:", productsError);
 
-setProducts(productData || []);
+    setProducts(productsData || []);
+  }
 
-setLoading(false);
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        backgroundColor: "black",
+        color: "white",
+        padding: "30px",
+      }}
+    >
+      <div
+        style={{
+          maxWidth: "900px",
+          margin: "0 auto",
+        }}
+      >
+        <h1
+          style={{
+            marginBottom: "20px",
+          }}
+        >
+          Welcome {salesman?.name}
+        </h1>
 
+        {/* Dashboard Summary Cards */}
+        <div
+          style={{
+            display: "flex",
+            gap: "12px",
+            marginBottom: "20px",
+          }}
+        >
+          <div
+            style={{
+              border: "1px solid white",
+              padding: "15px",
+              flex: 1,
+              borderRadius: "8px",
+            }}
+          >
+            <h3>Routes</h3>
+            <p>{routes.length}</p>
+          </div>
 
-}
+          <div
+            style={{
+              border: "1px solid white",
+              padding: "15px",
+              flex: 1,
+              borderRadius: "8px",
+            }}
+          >
+            <h3>Retailers</h3>
+            <p>{retailers.length}</p>
+          </div>
 
-if (loading) {
-return ( <main className="p-8">
-Loading... </main>
-);
-}
-
-return ( <main className="p-8 max-w-4xl mx-auto"> <h1 className="text-3xl font-bold mb-6">
-Welcome {name} </h1>
-
-
-  <div className="grid gap-6">
-    <section className="border p-4 rounded">
-      <h2 className="font-bold text-xl mb-3">
-        My Routes
-      </h2>
-
-      {routes.map((route) => (
-        <div key={route.id}>
-          {route.name}
+          <div
+            style={{
+              border: "1px solid white",
+              padding: "15px",
+              flex: 1,
+              borderRadius: "8px",
+            }}
+          >
+            <h3>Products</h3>
+            <p>{products.length}</p>
+          </div>
         </div>
-      ))}
-    </section>
 
-    <section className="border p-4 rounded">
-      <h2 className="font-bold text-xl mb-3">
-        Retailers on My Routes
-      </h2>
+        {/* Routes */}
+        <div
+          style={{
+            border: "1px solid white",
+            padding: "20px",
+            marginBottom: "20px",
+            borderRadius: "8px",
+          }}
+        >
+          <h2>My Routes</h2>
 
-      {retailers.map((retailer) => (
-        <div key={retailer.id}>
-          {retailer.name}
+          {routes.map((route: any) => (
+            <p key={route.id}>{route.name}</p>
+          ))}
         </div>
-      ))}
-    </section>
 
-    <section className="border p-4 rounded">
-      <h2 className="font-bold text-xl mb-3">
-        Available Products
-      </h2>
+        {/* Retailers */}
+        <div
+          style={{
+            border: "1px solid white",
+            padding: "20px",
+            marginBottom: "20px",
+            borderRadius: "8px",
+          }}
+        >
+          <h2>Retailers on My Routes</h2>
 
-      {products.map((product) => (
-        <div key={product.id}>
-          {product.name} - ₹{product.price}
+          {retailers.map((retailer: any) => (
+            <div
+              key={retailer.id}
+              style={{
+                border: "1px solid gray",
+                padding: "12px",
+                marginTop: "10px",
+                borderRadius: "6px",
+              }}
+            >
+              <h3>{retailer.name}</h3>
+
+              <p>{retailer.phone}</p>
+
+              <p>{retailer.address}</p>
+
+              <button
+                onClick={() =>
+                  router.push(`/retailer/${retailer.id}`)
+                }
+                style={{
+                  padding: "8px 12px",
+                  cursor: "pointer",
+                }}
+              >
+                Visit Retailer
+              </button>
+            </div>
+          ))}
         </div>
-      ))}
-    </section>
-  </div>
-</main>
 
+        {/* Products */}
+        <div
+          style={{
+            border: "1px solid white",
+            padding: "20px",
+            borderRadius: "8px",
+          }}
+        >
+          <h2>Available Products</h2>
 
-);
+          {products.map((product: any) => (
+            <p key={product.id}>
+              {product.name} - ₹{product.price}
+            </p>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 }
+
