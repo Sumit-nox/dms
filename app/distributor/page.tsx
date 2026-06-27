@@ -1,6 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+  ResponsiveContainer,
+} from "recharts";
 import { jsPDF } from "jspdf";
 import { supabase } from "@/lib/supabase/client";
 
@@ -9,6 +18,7 @@ export default function DistributorDashboard() {
   const [products, setProducts] = useState<any[]>([]);
   const [retailers, setRetailers] = useState<any[]>([]);
   const [orders, setOrders] = useState<any[]>([]);
+  const [vehicles, setVehicles] = useState<any[]>([]);
 
   const [billedOrders, setBilledOrders] =
     useState<any[]>([]);
@@ -17,6 +27,30 @@ export default function DistributorDashboard() {
     useState<any[]>([]);
 
   const [deliveredOrders, setDeliveredOrders] =
+    useState<any[]>([]);
+
+  const [totalRevenue, setTotalRevenue] =
+    useState(0);
+
+  const [totalOrders, setTotalOrders] =
+    useState(0);
+
+  const [topProduct, setTopProduct] =
+    useState("N/A");
+
+  const [topRetailer, setTopRetailer] =
+    useState("N/A");
+
+  const [bestRoute, setBestRoute] =
+    useState("N/A");
+
+  const [monthlyRevenue, setMonthlyRevenue] =
+    useState(0);
+
+  const [monthlyOrders, setMonthlyOrders] =
+    useState(0);
+
+  const [revenueChartData, setRevenueChartData] =
     useState<any[]>([]);
 
   const [invoices, setInvoices] =
@@ -33,6 +67,10 @@ export default function DistributorDashboard() {
 
   const [orderItems, setOrderItems] =
     useState<any[]>([]);
+
+  const [selectedVehicle, setSelectedVehicle] =
+    useState<{ [key: number]: number }>({});
+
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -92,7 +130,8 @@ export default function DistributorDashboard() {
       .from("orders")
       .select(`
     *,
-    retailers(name)
+    retailers(name),
+    vehicles(vehicle_no)
   `)
       .eq("status", "Dispatched")
       .order("id", { ascending: false });
@@ -101,7 +140,8 @@ export default function DistributorDashboard() {
       .from("orders")
       .select(`
     *,
-    retailers(name)
+    retailers(name),
+    vehicles(vehicle_no)
   `)
       .eq("status", "Delivered")
       .order("id", { ascending: false });
@@ -110,6 +150,222 @@ export default function DistributorDashboard() {
       .from("invoices")
       .select("*")
       .order("id", { ascending: false });
+
+    const { data: allOrderItems } =
+      await supabase
+        .from("order_items")
+        .select(`
+      qty,
+      product_id,
+      products(name)
+    `);
+
+    const { data: vehiclesData } = await supabase
+      .from("vehicles")
+      .select("*")
+      .order("id");
+
+    console.log("VEHICLES:", vehiclesData);
+
+    const revenue =
+      (invoicesData || []).reduce(
+        (sum, invoice) =>
+          sum + Number(invoice.total),
+        0
+      );
+
+    const currentMonth =
+      new Date().getMonth();
+
+    const currentYear =
+      new Date().getFullYear();
+
+    const monthlyInvoices =
+      (invoicesData || []).filter(
+        (invoice: any) => {
+          const invoiceDate =
+            new Date(invoice.billed_at);
+
+          return (
+            invoiceDate.getMonth() ===
+            currentMonth &&
+            invoiceDate.getFullYear() ===
+            currentYear
+          );
+        }
+      );
+
+    const currentMonthRevenue =
+      monthlyInvoices.reduce(
+        (sum: number, invoice: any) =>
+          sum + Number(invoice.total),
+        0
+      );
+
+    setMonthlyRevenue(
+      currentMonthRevenue
+    );
+
+    const allOrders = [
+      ...(ordersData || []),
+      ...(billedOrdersData || []),
+      ...(dispatchedOrdersData || []),
+      ...(deliveredOrdersData || []),
+    ];
+
+    const currentMonthOrders =
+      allOrders.filter(
+        (order: any) => {
+          const orderDate =
+            new Date(order.order_date);
+
+          return (
+            orderDate.getMonth() ===
+            currentMonth &&
+            orderDate.getFullYear() ===
+            currentYear
+          );
+        }
+      );
+
+    setMonthlyOrders(
+      currentMonthOrders.length
+    );
+
+    const monthlyMap: Record<
+      string,
+      number
+    > = {};
+
+    (invoicesData || []).forEach(
+      (invoice: any) => {
+        const date =
+          new Date(invoice.billed_at);
+
+        const month =
+          date.toLocaleString(
+            "default",
+            { month: "short" }
+          );
+
+        monthlyMap[month] =
+          (monthlyMap[month] || 0) +
+          Number(invoice.total);
+      }
+    );
+
+    const chartData =
+      Object.entries(monthlyMap).map(
+        ([month, revenue]) => ({
+          month,
+          revenue,
+        })
+      );
+
+    setRevenueChartData(chartData);
+
+    const productTotals: Record<
+      string,
+      number
+    > = {};
+
+    (allOrderItems || []).forEach(
+      (item: any) => {
+        const name =
+          item.products?.name || "Unknown";
+
+        productTotals[name] =
+          (productTotals[name] || 0) +
+          item.qty;
+      }
+    );
+
+    let bestProduct = "N/A";
+    let maxQty = 0;
+
+    Object.entries(productTotals).forEach(
+      ([name, qty]) => {
+        if (qty > maxQty) {
+          maxQty = qty as number;
+          bestProduct = name;
+        }
+      }
+    );
+
+    setTopProduct(bestProduct);
+
+    const retailerTotals: Record<
+      string,
+      number
+    > = {};
+
+    (deliveredOrdersData || []).forEach(
+      (order: any) => {
+        const retailerName =
+          order.retailers?.name || "Unknown";
+
+        retailerTotals[retailerName] =
+          (retailerTotals[retailerName] || 0) + 1;
+      }
+    );
+
+    let bestRetailer = "N/A";
+    let maxOrders = 0;
+
+    Object.entries(retailerTotals).forEach(
+      ([name, count]) => {
+        if ((count as number) > maxOrders) {
+          maxOrders = count as number;
+          bestRetailer = name;
+        }
+      }
+    );
+
+    setTopRetailer(bestRetailer);
+
+    const routeTotals: Record<
+      string,
+      number
+    > = {};
+
+    (deliveredOrdersData || []).forEach(
+      (order: any) => {
+        const route =
+          order.route_id?.toString() || "Unknown";
+
+        routeTotals[route] =
+          (routeTotals[route] || 0) + 1;
+      }
+    );
+
+    let bestRouteId = "N/A";
+    let maxRouteOrders = 0;
+
+    Object.entries(routeTotals).forEach(
+      ([route, count]) => {
+        if ((count as number) > maxRouteOrders) {
+          maxRouteOrders = count as number;
+          bestRouteId = route;
+        }
+      }
+    );
+
+    const routeName =
+      routesData?.find(
+        (r: any) =>
+          r.id.toString() === bestRouteId
+      )?.name || "N/A";
+
+    setBestRoute(routeName);
+
+    setTotalRevenue(revenue);
+
+    setTotalOrders(
+      (ordersData?.length || 0) +
+      (billedOrdersData?.length || 0) +
+      (dispatchedOrdersData?.length || 0) +
+      (deliveredOrdersData?.length || 0)
+    );
 
 
     setRoutes(routesData || []);
@@ -120,6 +376,7 @@ export default function DistributorDashboard() {
     setDispatchedOrders(dispatchedOrdersData || []);
     setDeliveredOrders(deliveredOrdersData || []);
     setInvoices(invoicesData || []);
+    setVehicles(vehiclesData || []);
   }
 
   async function addRetailer() {
@@ -217,8 +474,13 @@ export default function DistributorDashboard() {
     setSelectedOrder(null);
   }
 
-  async function dispatchOrder(orderId: number) {
+  async function dispatchOrder(orderId: number, vehicleId: number) {
     // Load all order items
+
+    if (!vehicleId) {
+      alert("Please select a vehicle");
+      return;
+    }
 
     const { data: items, error: itemsError } =
       await supabase
@@ -277,6 +539,7 @@ export default function DistributorDashboard() {
       .from("orders")
       .update({
         status: "Dispatched",
+        vehicle_id: vehicleId,
       })
       .eq("id", orderId);
 
@@ -540,6 +803,222 @@ export default function DistributorDashboard() {
         Distributor Dashboard
       </h1>
 
+      <div className="mb-6">
+        <h2 className="text-2xl font-bold">
+          Vehicles
+        </h2>
+
+        {vehicles.map((vehicle) => (
+          <div
+            key={vehicle.id}
+            className="border p-3 rounded mb-2"
+          >
+            <div>
+              Vehicle: {vehicle.vehicle_no}
+            </div>
+
+            <div>
+              Capacity: {vehicle.capacity}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Vehicle Utilization */}
+      <div className="mt-12">
+        <h2 className="text-2xl font-bold mb-4">
+          Vehicle Utilization
+        </h2>
+
+        {vehicles.map((vehicle) => {
+          const assignedOrders =
+            dispatchedOrders.filter(
+              (order) =>
+                order.vehicle_id === vehicle.id
+            ).length;
+
+          const status =
+            assignedOrders > 0
+              ? "In Transit"
+              : "Available";
+
+          return (
+            <div
+              key={vehicle.id}
+              className="border p-4 rounded mb-3"
+            >
+              <div>
+                <strong>
+                  {vehicle.vehicle_no}
+                </strong>
+              </div>
+
+              <div>
+                Capacity: {vehicle.capacity}
+              </div>
+
+              <div>
+                Assigned Orders:
+                {" "}
+                {assignedOrders}
+              </div>
+
+              <div
+                className={
+                  status === "In Transit"
+                    ? "text-yellow-400 font-bold"
+                    : "text-green-400 font-bold"
+                }
+              >
+                Status: {status}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Sales Analytics */}
+      <div className="grid grid-cols-4 gap-4 mb-8">
+
+        <div className="border p-4 rounded">
+          <div>Total Revenue</div>
+          <div className="text-4xl font-bold text-green-400">
+            ₹{totalRevenue}
+          </div>
+        </div>
+
+        <div className="border p-4 rounded">
+          <div>Total Orders</div>
+          <div className="text-4xl font-bold">
+            {totalOrders}
+          </div>
+        </div>
+
+        <div className="border p-4 rounded">
+          <div>Delivered Orders</div>
+          <div className="text-4xl font-bold text-blue-400">
+            {deliveredOrders.length}
+          </div>
+        </div>
+
+        <div className="border p-4 rounded">
+          <div>Vehicles</div>
+          <div className="text-4xl font-bold text-yellow-400">
+            {vehicles.length}
+          </div>
+        </div>
+
+        <div className="border p-4 rounded">
+          <div>Top Product</div>
+
+          <div className="text-xl font-bold text-purple-400">
+            {topProduct}
+          </div>
+        </div>
+
+        <div className="border p-4 rounded">
+          <div>Top Retailer</div>
+
+          <div className="text-xl font-bold text-cyan-400">
+            {topRetailer}
+          </div>
+        </div>
+
+        <div className="border p-4 rounded">
+          <div>Best Route</div>
+
+          <div className="text-xl font-bold text-orange-400">
+            {bestRoute}
+          </div>
+        </div>
+
+        <div className="border p-4 rounded">
+          <div>Monthly Revenue</div>
+
+          <div className="text-xl font-bold text-green-400">
+            ₹{monthlyRevenue}
+          </div>
+        </div>
+
+        <div className="border p-4 rounded">
+          <div>Monthly Orders</div>
+
+          <div className="text-xl font-bold text-blue-400">
+            {monthlyOrders}
+          </div>
+        </div>
+
+      </div>
+
+      {/* Revenue Chart */}
+      <div className="mt-10 border p-6 rounded">
+
+        <h2 className="text-2xl font-bold mb-4">
+          Revenue Trend
+        </h2>
+
+        <ResponsiveContainer
+          width="100%"
+          height={300}
+        >
+          <LineChart
+            data={revenueChartData}
+          >
+            <CartesianGrid strokeDasharray="3 3" />
+
+            <XAxis dataKey="month" />
+
+            <YAxis />
+
+            <Tooltip />
+
+            <Line
+              type="monotone"
+              dataKey="revenue"
+              stroke="#22c55e"
+            />
+          </LineChart>
+        </ResponsiveContainer>
+
+      </div>
+
+      {/* Logistics Summary */}
+      <div className="grid grid-cols-4 gap-4 mb-8">
+
+        <div className="border p-4 rounded">
+          <div>Total Vehicles</div>
+          <div className="text-4xl font-bold">
+            {vehicles.length}
+          </div>
+        </div>
+
+        <div className="border p-4 rounded">
+          <div>Vehicles In Use</div>
+          <div className="text-4xl font-bold">
+            {
+              dispatchedOrders.filter(
+                (order) => order.vehicle_id
+              ).length
+            }
+          </div>
+        </div>
+
+        <div className="border p-4 rounded">
+          <div>Orders In Transit</div>
+          <div className="text-4xl font-bold">
+            {dispatchedOrders.length}
+          </div>
+        </div>
+
+        <div className="border p-4 rounded">
+          <div>Delivered Orders</div>
+          <div className="text-4xl font-bold">
+            {deliveredOrders.length}
+          </div>
+        </div>
+
+      </div>
+
       {/* Routes + Products */}
       <div className="grid grid-cols-2 gap-10 mb-12">
         <div>
@@ -794,11 +1273,40 @@ export default function DistributorDashboard() {
                 Date: {order.order_date}
               </div>
 
-              <button
-                onClick={() => dispatchOrder(order.id)}
-                className="mt-4 bg-yellow-600 px-4 py-2 rounded"
+              <select
+                className="mt-4 p-2 bg-white text-black rounded"
+                value={selectedVehicle[order.id] || ""}
+                onChange={(e) =>
+                  setSelectedVehicle({
+                    ...selectedVehicle,
+                    [order.id]: Number(e.target.value),
+                  })
+                }
               >
-                Dispatch Order
+                <option value="">
+                  Select Vehicle
+                </option>
+
+                {vehicles.map((vehicle) => (
+                  <option
+                    key={vehicle.id}
+                    value={vehicle.id}
+                  >
+                    {vehicle.vehicle_no}
+                  </option>
+                ))}
+              </select>
+
+              <button
+                onClick={() =>
+                  dispatchOrder(
+                    order.id,
+                    selectedVehicle[order.id]
+                  )
+                }
+                className="mt-4 ml-3 bg-yellow-600 px-4 py-2 rounded"
+              >
+                Assign & Dispatch
               </button>
 
             </div>
@@ -832,6 +1340,10 @@ export default function DistributorDashboard() {
 
                 <div>
                   Status: {order.status}
+                </div>
+
+                <div>
+                  Vehicle: {order.vehicles?.vehicle_no}
                 </div>
 
                 <div>
@@ -979,6 +1491,10 @@ export default function DistributorDashboard() {
 
               <div>
                 Status: {order.status}
+              </div>
+
+              <div>
+                Vehicle: {order.vehicles?.vehicle_no}
               </div>
 
               <div>
